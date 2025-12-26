@@ -1,12 +1,19 @@
 import React, { useState, useRef } from 'react';
 import { SrtEntry, SrtChunk } from '../types';
 import { parseSrt, chunkEntries, downloadBlob } from '../utils/srtUtils';
-import JSZip from 'https://esm.sh/jszip';
 
-const SplitTab: React.FC = () => {
-  const [file, setFile] = useState<File | null>(null);
-  const [entries, setEntries] = useState<SrtEntry[]>([]);
-  const [chunks, setChunks] = useState<SrtChunk[]>([]);
+declare const JSZip: any;
+
+interface SplitTabProps {
+  file: File | null;
+  setFile: React.Dispatch<React.SetStateAction<File | null>>;
+  entries: SrtEntry[];
+  setEntries: React.Dispatch<React.SetStateAction<SrtEntry[]>>;
+  chunks: SrtChunk[];
+  setChunks: React.Dispatch<React.SetStateAction<SrtChunk[]>>;
+}
+
+const SplitTab: React.FC<SplitTabProps> = ({ file, setFile, entries, setEntries, chunks, setChunks }) => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isZipping, setIsZipping] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);

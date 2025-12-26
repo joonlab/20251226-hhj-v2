@@ -2,8 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { SRTFile } from '../types';
 import { parseSRTBlocks, mergeSRTFiles } from '../utils/srtUtils';
 
-const MergeTab: React.FC = () => {
-  const [files, setFiles] = useState<SRTFile[]>([]);
+declare const JSZip: any;
+
+interface MergeTabProps {
+  files: SRTFile[];
+  setFiles: React.Dispatch<React.SetStateAction<SRTFile[]>>;
+}
+
+const MergeTab: React.FC<MergeTabProps> = ({ files, setFiles }) => {
   const [mergedPreview, setMergedPreview] = useState<string>('');
 
   const readFileAsSRT = (file: File): Promise<SRTFile> => {
@@ -29,14 +35,62 @@ const MergeTab: React.FC = () => {
     if (!uploadedFiles) return;
 
     const fileArray = Array.from(uploadedFiles) as File[];
-    const newSrtFiles = await Promise.all(fileArray.map(file => readFileAsSRT(file)));
+    const srtFilesToAdd: SRTFile[] = [];
 
-    setFiles(prev => {
-      const combined = [...prev, ...newSrtFiles];
-      return combined.sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
-      );
-    });
+    for (const file of fileArray) {
+      // Handle ZIP files
+      if (
+        file.name.endsWith('.zip') ||
+        file.type === 'application/zip' ||
+        file.type === 'application/x-zip-compressed'
+      ) {
+        try {
+          const zip = new JSZip();
+          const loadedZip = await zip.loadAsync(file);
+
+          for (const filename of Object.keys(loadedZip.files)) {
+            const zipEntry = loadedZip.files[filename];
+
+            // Only process .srt files, ignore directories and hidden files
+            if (
+              !zipEntry.dir &&
+              !filename.startsWith('__MACOSX') &&
+              !filename.split('/').pop()?.startsWith('.') &&
+              filename.toLowerCase().endsWith('.srt')
+            ) {
+              const text = await zipEntry.async('text');
+              const cleanName = filename.split('/').pop() || filename;
+              const blocks = parseSRTBlocks(text);
+
+              srtFilesToAdd.push({
+                id: Math.random().toString(36).substr(2, 9),
+                name: cleanName,
+                size: text.length,
+                blocks,
+                rawContent: text
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Error unzipping file:", file.name, error);
+          alert(`압축 파일(${file.name})을 해제하는 중 오류가 발생했습니다.`);
+        }
+      }
+      // Handle regular SRT files
+      else if (file.name.toLowerCase().endsWith('.srt')) {
+        const srtFile = await readFileAsSRT(file);
+        srtFilesToAdd.push(srtFile);
+      }
+    }
+
+    if (srtFilesToAdd.length > 0) {
+      setFiles(prev => {
+        const combined = [...prev, ...srtFilesToAdd];
+        return combined.sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+        );
+      });
+    }
 
     e.target.value = '';
   };
@@ -129,7 +183,7 @@ const MergeTab: React.FC = () => {
             <input
               type="file"
               multiple
-              accept=".srt"
+              accept=".srt,.zip"
               onChange={handleFileUpload}
               className="absolute inset-0 opacity-0 cursor-pointer"
             />
@@ -138,8 +192,8 @@ const MergeTab: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
             </div>
-            <p className="text-slate-700 font-bold text-lg">SRT 파일 업로드</p>
-            <p className="text-sm text-slate-400 mt-2">여러 파일을 순서대로 병합합니다</p>
+            <p className="text-slate-700 font-bold text-lg">SRT 파일 또는 ZIP 업로드</p>
+            <p className="text-sm text-slate-400 mt-2">여러 파일을 순서대로 병합합니다 (ZIP 내 SRT 자동 인식)</p>
           </div>
 
           <div className="mt-6 space-y-3">

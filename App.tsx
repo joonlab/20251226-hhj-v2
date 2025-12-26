@@ -1,11 +1,27 @@
 import React, { useState } from 'react';
-import { TabType } from './types';
+import { TabType, SrtEntry, SrtChunk, ProjectEntry, ReferenceConfig, SRTFile } from './types';
 import SplitTab from './components/SplitTab';
 import CorrectTab from './components/CorrectTab';
 import MergeTab from './components/MergeTab';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('split');
+
+  // 1단계: SplitTab 상태
+  const [splitFile, setSplitFile] = useState<File | null>(null);
+  const [splitEntries, setSplitEntries] = useState<SrtEntry[]>([]);
+  const [splitChunks, setSplitChunks] = useState<SrtChunk[]>([]);
+
+  // 2단계: CorrectTab 상태
+  const [projects, setProjects] = useState<ProjectEntry[]>([]);
+  const [refConfig, setRefConfig] = useState<ReferenceConfig>({
+    characters: [],
+    movies: [],
+    files: []
+  });
+
+  // 3단계: MergeTab 상태
+  const [mergeFiles, setMergeFiles] = useState<SRTFile[]>([]);
 
   const tabs = [
     {
@@ -86,9 +102,30 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-6">
-        {activeTab === 'split' && <SplitTab />}
-        {activeTab === 'correct' && <CorrectTab />}
-        {activeTab === 'merge' && <MergeTab />}
+        <div style={{ display: activeTab === 'split' ? 'block' : 'none' }}>
+          <SplitTab
+            file={splitFile}
+            setFile={setSplitFile}
+            entries={splitEntries}
+            setEntries={setSplitEntries}
+            chunks={splitChunks}
+            setChunks={setSplitChunks}
+          />
+        </div>
+        <div style={{ display: activeTab === 'correct' ? 'block' : 'none' }}>
+          <CorrectTab
+            projects={projects}
+            setProjects={setProjects}
+            refConfig={refConfig}
+            setRefConfig={setRefConfig}
+          />
+        </div>
+        <div style={{ display: activeTab === 'merge' ? 'block' : 'none' }}>
+          <MergeTab
+            files={mergeFiles}
+            setFiles={setMergeFiles}
+          />
+        </div>
       </main>
 
       {/* Global Styles */}

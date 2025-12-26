@@ -5,21 +5,24 @@ import { processTextSegment } from '../services/geminiService';
 declare const JSZip: any;
 declare const diff_match_patch: any;
 
-const CorrectTab: React.FC = () => {
-  const [projects, setProjects] = useState<ProjectEntry[]>([]);
+interface CorrectTabProps {
+  // Props for state persistence across tab switches
+  projects: ProjectEntry[];
+  setProjects: React.Dispatch<React.SetStateAction<ProjectEntry[]>>;
+  refConfig: ReferenceConfig;
+  setRefConfig: React.Dispatch<React.SetStateAction<ReferenceConfig>>;
+}
+
+const CorrectTab: React.FC<CorrectTabProps> = ({ projects, setProjects, refConfig, setRefConfig }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
-
-  const [refConfig, setRefConfig] = useState<ReferenceConfig>({
-    characters: [],
-    movies: [],
-    files: []
-  });
 
   const [charInput, setCharInput] = useState('');
   const [movieInput, setMovieInput] = useState('');
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editorLines, setEditorLines] = useState<string[]>([]);
+  // Store original lines (non-empty) for proper comparison
+  const [originalLinesFiltered, setOriginalLinesFiltered] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const refFileInputRef = useRef<HTMLInputElement>(null);
@@ -149,6 +152,7 @@ const CorrectTab: React.FC = () => {
   const mergeToSrt = async (timecodeFile: File, correctedText: string): Promise<string> => {
     const timecodeContent = await timecodeFile.text();
     const timecodeBlocks = timecodeContent.trim().split(/\n\s*\n/);
+    // Filter out empty lines and get actual text lines
     const textLines = correctedText.trim().split('\n').filter(line => line.trim() !== '');
 
     let srtOutput = '';
@@ -233,11 +237,16 @@ const CorrectTab: React.FC = () => {
     }));
   };
 
-  // Editor & Diff Logic
+  // Editor & Diff Logic - Filter empty lines for proper comparison
   const openEditor = (project: ProjectEntry) => {
     if (project.status === 'review_ready' || project.status === 'completed') {
       setEditingProjectId(project.id);
-      setEditorLines(project.correctedText.split('\n'));
+      // Filter out empty lines from original text
+      const origFiltered = project.originalText.split('\n').filter(line => line.trim() !== '');
+      // Filter out empty lines from corrected text
+      const corrFiltered = project.correctedText.split('\n').filter(line => line.trim() !== '');
+      setOriginalLinesFiltered(origFiltered);
+      setEditorLines(corrFiltered);
     }
   };
 
@@ -254,6 +263,7 @@ const CorrectTab: React.FC = () => {
 
     const project = projects.find(p => p.id === editingProjectId);
     if (project && project.timecodeFile) {
+      // Join with single newline - mergeToSrt will handle it properly
       const finalText = editorLines.join('\n');
       const srt = await mergeToSrt(project.timecodeFile, finalText);
 
@@ -267,12 +277,11 @@ const CorrectTab: React.FC = () => {
     setEditingProjectId(null);
   };
 
-  // Row-by-Row Diff Calculation
+  // Row-by-Row Diff Calculation using filtered lines
   const rowDiffs = useMemo(() => {
-    const project = projects.find(p => p.id === editingProjectId);
-    if (!project || !editingProjectId) return [];
+    if (!editingProjectId) return [];
 
-    const originalLines = project.originalText.split('\n');
+    const originalLines = originalLinesFiltered;
     const correctedLines = editorLines;
 
     const dmp = new diff_match_patch();
@@ -352,7 +361,7 @@ const CorrectTab: React.FC = () => {
     }
 
     return rows;
-  }, [editingProjectId, projects, editorLines]);
+  }, [editingProjectId, originalLinesFiltered, editorLines]);
 
   const currentProject = projects.find(p => p.id === editingProjectId);
 
@@ -662,7 +671,7 @@ const CorrectTab: React.FC = () => {
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="text-lg font-bold text-slate-800">자막 검토 및 확정</h3>
-                <p className="text-xs text-slate-500">Project #{currentProject.id} - 줄 단위 비교</p>
+                <p className="text-xs text-slate-500">Project #{currentProject.id} - 줄 단위 비교 (원본 {originalLinesFiltered.length}줄, 수정본 {editorLines.length}줄)</p>
               </div>
               <div className="flex space-x-2">
                 <button
@@ -687,11 +696,12 @@ const CorrectTab: React.FC = () => {
             <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-100 p-4">
               <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                 <div className="flex bg-slate-50 border-b border-slate-200 sticky top-0 z-10 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <div className="w-12 px-2 py-3 border-r border-slate-200 text-center">#</div>
                   <div className="w-1/2 px-4 py-3 border-r border-slate-200 flex justify-between">
                     <span>원본</span>
                     <span className="text-[10px] text-red-500 normal-case bg-red-50 px-2 py-0.5 rounded">삭제됨</span>
                   </div>
-                  <div className="w-1/2 px-4 py-3 flex justify-between">
+                  <div className="flex-1 px-4 py-3 flex justify-between">
                     <span>수정본 (편집 가능)</span>
                     <span className="text-[10px] text-indigo-600 normal-case bg-indigo-50 px-2 py-0.5 rounded">추가됨</span>
                   </div>
@@ -700,11 +710,14 @@ const CorrectTab: React.FC = () => {
                 <div className="divide-y divide-slate-100">
                   {rowDiffs.map((row, index) => (
                     <div key={index} className="flex group hover:bg-slate-50/50 transition-colors">
+                      <div className="w-12 px-2 py-2 border-r border-slate-200 text-center text-xs text-slate-400 font-mono">
+                        {index + 1}
+                      </div>
                       <div className="w-1/2 px-4 py-2 border-r border-slate-200 font-mono text-sm text-slate-600 leading-relaxed break-words whitespace-pre-wrap flex items-center min-h-[40px]">
                         {row.left}
                       </div>
                       <div
-                        className="w-1/2 px-4 py-2 font-mono text-sm text-slate-800 leading-relaxed break-words whitespace-pre-wrap outline-none focus:bg-indigo-50/20 transition-colors flex items-center min-h-[40px]"
+                        className="flex-1 px-4 py-2 font-mono text-sm text-slate-800 leading-relaxed break-words whitespace-pre-wrap outline-none focus:bg-indigo-50/20 transition-colors flex items-center min-h-[40px]"
                         contentEditable
                         suppressContentEditableWarning={true}
                         onKeyDown={(e) => {
